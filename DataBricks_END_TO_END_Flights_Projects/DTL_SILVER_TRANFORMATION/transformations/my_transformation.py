@@ -37,3 +37,90 @@ def silver_bookings():
     #or we can use the below one as well
     # df =dlt.read("trans_bookings")
     return df
+
+
+
+@dlt.view(
+    name="trans_flights"
+)
+def trans_flights():
+    df = spark.readStream.format("delta")\
+        .load('/Volumes/workspace/bronze/bronzevolume/flights/data/')
+
+    df = df.withColumn("flight_date", to_date(col("flight_Date")))\
+        .withColumn("modified_date", current_timestamp())\
+        .drop("_rescued_data")
+    return df
+
+dlt.create_streaming_table("silver_flights")
+
+dlt.create_auto_cdc_flow(
+    target = "silver_flights",
+    source = "trans_flights",
+    keys = ["flight_id"],
+    sequence_by = col("modified_date"),
+    stored_as_scd_type = 1
+)
+
+
+
+#for Cusomter data tranformation to Silver Layer
+
+@dlt.view(
+    name="trans_passengers"
+)
+def trans_passengers():
+    df = spark.readStream.format("delta")\
+        .load('/Volumes/workspace/bronze/bronzevolume/customers/data/')
+    
+    df = df.withColumn("modified_date", current_timestamp())\
+        .drop("_rescued_data")
+    return df
+
+dlt.create_streaming_table("silver_passengers")
+
+dlt.create_auto_cdc_flow(
+    target = "silver_passengers",
+    source = "trans_passengers",
+    keys = ["passenger_id"],
+    sequence_by = col("modified_date"),
+    stored_as_scd_type = 1
+)
+
+
+#for Airports data tranformation to Silver Layer
+
+@dlt.view(
+    name="trans_airports"
+)
+def trans_airports():
+    df = spark.readStream.format("delta")\
+        .load('/Volumes/workspace/bronze/bronzevolume/airports/data/')
+    
+    df = df.withColumn("modified_date", current_timestamp())\
+        .drop("_rescued_data")
+    return df
+
+dlt.create_streaming_table("silver_airports")
+
+dlt.create_auto_cdc_flow(
+    target = "silver_airports",
+    source = "trans_airports",
+    keys = ["airport_id"],
+    sequence_by = col("modified_date"),
+    stored_as_scd_type = 1
+)
+
+
+#Silver Bussiness View
+
+@dlt.table(
+    name = "silver_bussiness_view"
+)
+def silver_business():
+    df = dlt.readStream("silver_bookings")\
+        .join(dlt.readStream("silver_flights"), ["flight_id"])\
+        .join(dlt.readStream("silver_passengers"), ["passenger_id"])\
+        .join(dlt.readStream("silver_airports"), ["airport_id"])
+    return df
+
